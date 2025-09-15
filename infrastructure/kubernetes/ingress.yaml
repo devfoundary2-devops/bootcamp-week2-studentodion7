@@ -1,0 +1,147 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: shopmicro-ingress
+  namespace: shopmicro
+  labels:
+    app.kubernetes.io/name: shopmicro
+    app.kubernetes.io/component: ingress
+  annotations:
+    # Nginx ingress controller annotations
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    
+    # SSL/TLS configuration
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    
+    # Rate limiting
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    
+    # CORS
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization"
+    
+    # Security headers
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Frame-Options: SAMEORIGIN";
+      more_set_headers "X-Content-Type-Options: nosniff";
+      more_set_headers "X-XSS-Protection: 1; mode=block";
+      more_set_headers "Referrer-Policy: strict-origin-when-cross-origin";
+spec:
+  tls:
+  - hosts:
+    - shopmicro.example.com
+    - api.shopmicro.example.com
+    secretName: shopmicro-tls
+  rules:
+  # Frontend
+  - host: shopmicro.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend-service
+            port:
+              number: 80
+  
+  # Backend API
+  - host: api.shopmicro.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: backend-service
+            port:
+              number: 3001
+  
+  # ML Service (internal only - could be removed from public ingress)
+  - host: api.shopmicro.example.com
+    http:
+      paths:
+      - path: /ml
+        pathType: Prefix
+        backend:
+          service:
+            name: ml-service
+            port:
+              number: 3002
+---
+# Internal ingress for service-to-service communication
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: shopmicro-internal-ingress
+  namespace: shopmicro
+  labels:
+    app.kubernetes.io/name: shopmicro
+    app.kubernetes.io/component: internal-ingress
+  annotations:
+    kubernetes.io/ingress.class: "nginx-internal"  # Internal nginx controller
+    nginx.ingress.kubernetes.io/whitelist-source-range: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+spec:
+  rules:
+  - host: internal.shopmicro.local
+    http:
+      paths:
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: backend-service
+            port:
+              number: 3001
+      - path: /ml
+        pathType: Prefix
+        backend:
+          service:
+            name: ml-service
+            port:
+              number: 3002
+---
+# Network Policy for security
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: shopmicro-network-policy
+  namespace: shopmicro
+  labels:
+    app.kubernetes.io/name: shopmicro
+    app.kubernetes.io/component: security
+spec:
+  podSelector: {}  # Apply to all pods in namespace
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow ingress from nginx ingress controller
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: nginx-ingress
+  # Allow inter-service communication within namespace
+  - from:
+    - podSelector: {}
+  egress:
+  # Allow DNS resolution
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow external HTTPS (for API calls, etc.)
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+  # Allow internal service communication
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
