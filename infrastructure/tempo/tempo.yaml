@@ -1,0 +1,83 @@
+# Tempo configuration for ShopMicro
+# Single-binary deployment for distributed tracing
+
+server:
+  http_listen_port: 3200
+  grpc_listen_port: 9097
+  log_level: info
+
+# Distributor configuration
+distributor:
+  receivers:
+    # OTLP receivers
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+    # Jaeger receivers for compatibility
+    jaeger:
+      protocols:
+        thrift_http:
+          endpoint: 0.0.0.0:14268
+        grpc:
+          endpoint: 0.0.0.0:14250
+    # Zipkin receiver
+    zipkin:
+      endpoint: 0.0.0.0:9411
+
+# Ingester configuration
+ingester:
+  max_block_duration: 5m
+
+# Compactor configuration
+compactor:
+  compaction:
+    block_retention: 1h
+
+# Storage configuration
+storage:
+  trace:
+    backend: local
+    local:
+      path: /tmp/tempo/blocks
+    wal:
+      path: /tmp/tempo/wal
+    pool:
+      max_workers: 100
+      queue_depth: 10000
+
+# Query frontend configuration
+query_frontend:
+  search:
+    duration_slo: 5s
+    throughput_bytes_slo: 1.073741824e+09
+  trace_by_id:
+    duration_slo: 5s
+
+# Metrics generator configuration (optional)
+metrics_generator:
+  registry:
+    external_labels:
+      source: tempo
+      cluster: dev
+  storage:
+    path: /tmp/tempo/generator/wal
+    remote_write:
+      - url: http://mimir:9009/api/v1/push
+        send_exemplars: true
+
+# Overrides configuration
+overrides:
+  # Global limits
+  ingestion_rate_limit_bytes: 20000000
+  ingestion_burst_size_bytes: 30000000
+  max_bytes_per_trace: 50000000
+
+# Multitenancy (disabled for single tenant)
+multitenancy_enabled: false
+
+# Usage report (disabled)
+usage_report:
+  reporting_enabled: false

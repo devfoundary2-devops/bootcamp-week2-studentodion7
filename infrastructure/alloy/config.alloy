@@ -1,0 +1,107 @@
+// Alloy configuration for ShopMicro observability
+// Collects metrics, logs, and traces from all services
+
+// Configure logging level
+logging {
+	level  = "info"
+	format = "logfmt"
+}
+
+// Send metrics to Mimir
+prometheus.remote_write "mimir" {
+	endpoint {
+		url = "http://mimir:9009/api/v1/push"
+	}
+}
+
+// Scrape metrics from application services
+prometheus.scrape "app_metrics" {
+	targets = [
+		{"__address__" = "backend:3001", "job" = "backend", "service" = "shopmicro-backend"},
+		{"__address__" = "ml-service:3002", "job" = "ml-service", "service" = "shopmicro-ml-service"},
+		{"__address__" = "frontend:80", "job" = "frontend", "service" = "shopmicro-frontend"},
+	]
+	scrape_interval = "15s"
+	metrics_path   = "/metrics"
+	forward_to = [prometheus.remote_write.mimir.receiver]
+}
+
+// Scrape infrastructure metrics
+prometheus.scrape "infra_metrics" {
+	targets = [
+		{"__address__" = "postgres:5432", "job" = "postgres"},
+		{"__address__" = "redis:6379", "job" = "redis"},
+	]
+	scrape_interval = "30s"
+	metrics_path   = "/metrics"
+	forward_to = [prometheus.remote_write.mimir.receiver]
+}
+
+// Send logs to Loki
+loki.write "loki" {
+	endpoint {
+		url = "http://loki:3100/loki/api/v1/push"
+	}
+}
+
+// Discover Docker containers for log collection
+discovery.docker "containers" {
+	host = "unix:///var/run/docker.sock"
+}
+
+// Collect logs from Docker containers
+loki.source.docker "containers" {
+	host       = "unix:///var/run/docker.sock"
+	targets    = discovery.docker.containers.targets
+	forward_to = [loki.process.add_labels.receiver]
+}
+
+// Add labels and process logs
+loki.process "add_labels" {
+	stage.json {
+		expressions = {
+			level = "level",
+			service = "service_name",
+		}
+	}
+
+	// Add static labels
+	stage.static_labels {
+		values = {
+			cluster = "dev",
+			environment = "development",
+		}
+	}
+
+	forward_to = [loki.write.loki.receiver]
+}
+
+// OTLP receiver for traces
+otelcol.receiver.otlp "traces" {
+	grpc {
+		endpoint = "0.0.0.0:4317"
+	}
+	http {
+		endpoint = "0.0.0.0:4318"
+	}
+	output {
+		traces = [otelcol.processor.batch.traces.input]
+	}
+}
+
+// Batch processor for traces
+otelcol.processor.batch "traces" {
+	output {
+		traces = [otelcol.exporter.otlp.tempo.input]
+	}
+}
+
+// Send traces to Tempo
+otelcol.exporter.otlp "tempo" {
+	client {
+		endpoint = "http://tempo:4317"
+		tls {
+			insecure = true
+		}
+	}
+}

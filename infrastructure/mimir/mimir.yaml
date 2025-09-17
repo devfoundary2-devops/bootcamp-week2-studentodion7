@@ -1,0 +1,68 @@
+# Mimir configuration for ShopMicro
+# This configures Mimir as a single-binary deployment suitable for development
+
+# Basic server configuration
+server:
+  http_listen_port: 9009
+  grpc_listen_port: 9095
+  log_level: info
+
+# Common configuration
+common:
+  storage:
+    backend: filesystem
+    filesystem:
+      dir: /data/mimir
+
+# Ingester configuration
+ingester:
+  ring:
+    replication_factor: 1
+
+# Distributor configuration
+distributor:
+  ring:
+    instance_addr: 0.0.0.0
+
+# Ruler configuration
+ruler:
+  ring:
+    instance_addr: 0.0.0.0
+  rule_path: /data/rules
+  alertmanager_url: http://localhost:8080/alertmanager
+
+# Alertmanager configuration
+alertmanager:
+  data_dir: /data/alertmanager
+  external_url: http://localhost:9009/alertmanager
+
+# Compactor configuration
+compactor:
+  data_dir: /data/compactor
+  sharding_ring:
+    instance_addr: 0.0.0.0
+
+# Store gateway configuration
+store_gateway:
+  sharding_ring:
+    replication_factor: 1
+    instance_addr: 0.0.0.0
+
+# Limits configuration
+limits:
+  # Increase limits for development
+  ingestion_rate: 20000
+  ingestion_burst_size: 200000
+  max_global_series_per_user: 150000
+  max_global_series_per_metric: 20000
+
+# Runtime config (optional)
+runtime_config:
+  file: ""
+
+# Multitenancy configuration (disabled for single tenant)
+multitenancy_enabled: false
+
+# Usage stats (optional)
+usage_stats:
+  enabled: false

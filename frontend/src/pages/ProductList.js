@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { getProducts, getCategories } from '../services/api';
 
@@ -13,12 +13,7 @@ function ProductList() {
     page: 1
   });
 
-  useEffect(() => {
-    loadProducts();
-    loadCategories();
-  }, [filters]);
-
-  const loadProducts = async () => {
+  const loadProducts = useCallback(async () => {
     try {
       setLoading(true);
       const data = await getProducts(filters);
@@ -30,16 +25,21 @@ function ProductList() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filters]);
 
-  const loadCategories = async () => {
+  const loadCategories = useCallback(async () => {
     try {
       const data = await getCategories();
       setCategories(data.categories);
     } catch (err) {
       console.error('Error loading categories:', err);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadProducts();
+    loadCategories();
+  }, [filters, loadProducts, loadCategories]);
 
   const handleFilterChange = (key, value) => {
     setFilters(prev => ({

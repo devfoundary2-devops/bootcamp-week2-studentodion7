@@ -1,4 +1,5 @@
 import axios from 'axios';
+import monitoringService from './monitoring';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
 
@@ -11,28 +12,115 @@ const api = axios.create({
   }
 });
 
-// Request interceptor for adding auth token
+// Request interceptor for adding auth token and monitoring
 api.interceptors.request.use(
   (config) => {
+    // Add auth token
     const token = localStorage.getItem('authToken');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    
+    // Add correlation ID for tracing
+    const correlationId = monitoringService.generateCorrelationId();
+    config.headers['X-Correlation-Id'] = correlationId;
+    
+    // Add request start time for monitoring
+    config.metadata = { 
+      startTime: performance.now(),
+      correlationId,
+      timestamp: new Date().toISOString()
+    };
+    
     return config;
   },
   (error) => {
+    monitoringService.recordError({
+      type: 'api_request_error',
+      message: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString(),
+      url: window.location.href
+    });
     return Promise.reject(error);
   }
 );
 
-// Response interceptor for error handling
+// Response interceptor for error handling and monitoring
 api.interceptors.response.use(
-  (response) => response.data,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('authToken');
-      window.location.href = '/login';
+  (response) => {
+    // Calculate request duration
+    const endTime = performance.now();
+    const duration = endTime - response.config.metadata.startTime;
+    
+    // Record successful API call
+    monitoringService.recordApiCall(
+      response.config.method.toUpperCase(),
+      response.config.url,
+      duration,
+      response.status
+    );
+    
+    // Add response headers to monitoring context
+    const traceId = response.headers['x-trace-id'];
+    const correlationId = response.headers['x-correlation-id'] || response.config.metadata.correlationId;
+    
+    if (traceId || correlationId) {
+      monitoringService.recordMetric('api_trace_context', {
+        traceId,
+        correlationId,
+        method: response.config.method.toUpperCase(),
+        url: response.config.url,
+        status: response.status,
+        duration
+      });
     }
+    
+    return response.data;
+  },
+  (error) => {
+    // Calculate request duration even for errors
+    const endTime = performance.now();
+    const duration = error.config?.metadata ? 
+      endTime - error.config.metadata.startTime : 0;
+    
+    const status = error.response?.status || 0;
+    const method = error.config?.method?.toUpperCase() || 'UNKNOWN';
+    const url = error.config?.url || 'unknown';
+    
+    // Record failed API call
+    monitoringService.recordApiCall(method, url, duration, status, error);
+    
+    // Record detailed error information
+    monitoringService.recordError({
+      type: 'api_response_error',
+      message: error.message,
+      status,
+      method,
+      url,
+      responseData: error.response?.data,
+      duration,
+      correlationId: error.config?.metadata?.correlationId,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Handle specific error cases
+    if (status === 401) {
+      localStorage.removeItem('authToken');
+      monitoringService.recordBusinessEvent('user_logged_out', {
+        reason: 'token_expired',
+        automatic: true
+      });
+      window.location.href = '/login';
+    } else if (status >= 500) {
+      monitoringService.recordBusinessEvent('server_error_encountered', {
+        status,
+        method,
+        url,
+        correlationId: error.config?.metadata?.correlationId
+      });
+    }
+    
     return Promise.reject(error);
   }
 );
