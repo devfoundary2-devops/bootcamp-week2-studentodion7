@@ -1,0 +1,34 @@
+# Simplified Mimir configuration for ShopMicro development
+target: [all]
+
+server:
+  http_listen_port: 9009
+  grpc_listen_port: 9095
+  log_level: info
+
+common:
+  storage:
+    backend: filesystem
+    filesystem:
+      dir: /tmp/mimir/blocks
+
+ingester:
+  ring:
+    replication_factor: 1
+
+ruler:
+  storage:
+    type: local
+    local:
+      directory: /tmp/mimir/rules
+
+compactor:
+  data_dir: /tmp/mimir/compactor
+
+alerting:
+  enable_api: false
+
+multitenancy_enabled: false
+
+usage_stats:
+  enabled: false

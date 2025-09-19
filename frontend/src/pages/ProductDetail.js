@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getProduct, getRecommendations } from '../services/api';
 
@@ -9,14 +9,7 @@ function ProductDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    if (id) {
-      loadProduct();
-      loadRecommendations();
-    }
-  }, [id]);
-
-  const loadProduct = async () => {
+  const loadProduct = useCallback(async () => {
     try {
       setLoading(true);
       const data = await getProduct(id);
@@ -28,16 +21,23 @@ function ProductDetail() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
 
-  const loadRecommendations = async () => {
+  const loadRecommendations = useCallback(async () => {
     try {
       const data = await getRecommendations(1); // Mock user ID
       setRecommendations(data.recommendations || []);
     } catch (err) {
       console.error('Error loading recommendations:', err);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (id) {
+      loadProduct();
+      loadRecommendations();
+    }
+  }, [id, loadProduct, loadRecommendations]);
 
   const getStockStatus = (stock) => {
     if (stock === 0) return { text: 'Out of Stock', class: 'out' };

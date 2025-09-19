@@ -1,5 +1,5 @@
 # Multi-stage build for optimized production image
-FROM node:18-alpine AS base
+FROM node:20-alpine3.22 AS base
 
 # Install security updates and common tools
 RUN apk update && apk upgrade && \

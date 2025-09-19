@@ -1,0 +1,120 @@
+// Alloy configuration based on official Grafana documentation
+// https://grafana.com/docs/alloy/latest/reference/
+
+logging {
+	level  = "info"
+	format = "logfmt"
+}
+
+// Prometheus remote write to Mimir
+prometheus.remote_write "mimir" {
+	endpoint {
+		url = "http://mimir:9009/api/v1/push"
+	}
+}
+
+// Scrape metrics from application services
+prometheus.scrape "app_metrics" {
+	targets = [
+		{"__address__" = "backend:3001", "job" = "shopmicro-backend", "service" = "backend"},
+		{"__address__" = "ml-service:3002", "job" = "shopmicro-ml-service", "service" = "ml-service"},
+	]
+	scrape_interval = "15s"
+	metrics_path   = "/metrics"
+	forward_to     = [prometheus.remote_write.mimir.receiver]
+}
+
+// Scrape infrastructure metrics  
+prometheus.scrape "infra_metrics" {
+	targets = [
+		{"__address__" = "postgres:5432", "job" = "postgres", "service" = "database"},
+		{"__address__" = "redis:6379", "job" = "redis", "service" = "cache"},
+	]
+	scrape_interval = "30s"
+	metrics_path   = "/metrics"
+	forward_to     = [prometheus.remote_write.mimir.receiver]
+}
+
+// Scrape observability stack metrics
+prometheus.scrape "observability_metrics" {
+	targets = [
+		{"__address__" = "mimir:9009", "job" = "mimir", "service" = "metrics-storage"},
+		{"__address__" = "loki:3100", "job" = "loki", "service" = "logs-storage"},
+		{"__address__" = "tempo:3200", "job" = "tempo", "service" = "traces-storage"},
+		{"__address__" = "grafana:3000", "job" = "grafana", "service" = "visualization"},
+	]
+	scrape_interval = "30s"
+	metrics_path   = "/metrics"
+	forward_to     = [prometheus.remote_write.mimir.receiver]
+}
+
+// Loki write endpoint
+loki.write "loki" {
+	endpoint {
+		url = "http://loki:3100/loki/api/v1/push"
+		headers = {
+			"X-Scope-OrgID" = "anonymous",
+		}
+	}
+}
+
+// Docker container discovery
+discovery.docker "containers" {
+	host = "unix:///var/run/docker.sock"
+}
+
+// Collect logs from Docker containers
+loki.source.docker "containers" {
+	host       = "unix:///var/run/docker.sock"
+	targets    = discovery.docker.containers.targets
+	forward_to = [loki.process.add_labels.receiver]
+}
+
+// Process and label logs
+loki.process "add_labels" {
+	stage.json {
+		expressions = {
+			level = "level",
+			service = "service_name",
+		}
+	}
+
+	stage.static_labels {
+		values = {
+			cluster = "dev",
+			environment = "development",
+		}
+	}
+
+	forward_to = [loki.write.loki.receiver]
+}
+
+// OTLP receiver for traces
+otelcol.receiver.otlp "traces" {
+	grpc {
+		endpoint = "0.0.0.0:4317"
+	}
+	http {
+		endpoint = "0.0.0.0:4318"
+	}
+	output {
+		traces = [otelcol.processor.batch.traces.input]
+	}
+}
+
+// Batch processor for traces
+otelcol.processor.batch "traces" {
+	output {
+		traces = [otelcol.exporter.otlp.tempo.input]
+	}
+}
+
+// Send traces to Tempo
+otelcol.exporter.otlp "tempo" {
+	client {
+		endpoint = "http://tempo:4317"
+		tls {
+			insecure = true
+		}
+	}
+}

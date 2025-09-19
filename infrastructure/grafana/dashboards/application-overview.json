@@ -1,8 +1,8 @@
 {
   "dashboard": {
     "id": null,
-    "title": "ShopMicro - Application Overview",
-    "tags": ["shopmicro", "application", "overview"],
+    "title": "ShopMicro - Observability Overview",
+    "tags": ["shopmicro", "observability", "grafana-stack"],
     "timezone": "browser",
     "panels": [
       {
