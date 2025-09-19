@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getHealth, getDetailedHealth, getMetrics, getProducts, getUsers } from '../services/api';
+import { getDetailedHealth, getMetrics, getProducts, getUsers } from '../services/api';
 
 function AdminDashboard() {
   const [health, setHealth] = useState(null);

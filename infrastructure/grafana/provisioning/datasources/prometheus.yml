@@ -1,44 +1,66 @@
 apiVersion: 1
 
 datasources:
-  - name: Prometheus
+  - name: Mimir
     type: prometheus
     access: proxy
-    url: http://prometheus:9090
+    url: http://mimir:9009/prometheus
     isDefault: true
     editable: true
     jsonData:
       timeInterval: 15s
       queryTimeout: 300s
       httpMethod: GET
+      prometheusType: Mimir
+      prometheusVersion: 2.40.0
+      cacheLevel: 'High'
     secureJsonData: {}
-  
-  - name: Jaeger
-    type: jaeger
+
+  - name: Loki
+    type: loki
     access: proxy
-    url: http://jaeger:16686
+    url: http://loki:3100
     editable: true
     jsonData:
+      maxLines: 1000
+      derivedFields:
+        - datasourceUid: tempo
+          matcherRegex: 'trace_id=(\w+)'
+          name: TraceID
+          url: '/explore?orgId=1&left=["now-1h","now","Tempo",{"query":"${__value.raw}"}]'
+          urlDisplayLabel: 'View Trace'
+
+  - name: Tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    editable: true
+    jsonData:
+      httpMethod: GET
       tracesToLogs:
-        datasourceUid: Loki
+        datasourceUid: 'loki'
         tags: ['job', 'instance', 'pod', 'namespace']
         mappedTags: [
-          { key: 'service.name', value: 'service' }
+          { key: 'service.name', value: 'service' },
+          { key: 'service.namespace', value: 'namespace' }
         ]
         mapTagNamesEnabled: true
         spanStartTimeShift: '-1h'
         spanEndTimeShift: '1h'
-
-  # Uncomment if using Loki for logs
-  # - name: Loki
-  #   type: loki
-  #   access: proxy
-  #   url: http://loki:3100
-  #   editable: true
-  #   jsonData:
-  #     maxLines: 1000
-  #     derivedFields:
-  #       - datasourceUid: Jaeger
-  #         matcherRegex: "traceID=(\\w+)"
-  #         name: TraceID
-  #         url: "/explore?orgId=1&left=[\"now-1h\",\"now\",\"Jaeger\",{\"query\":\"${__value.raw}\"}]"
+        filterByTraceID: true
+        filterBySpanID: true
+      tracesToMetrics:
+        datasourceUid: 'mimir'
+        tags: [{ key: 'service.name', value: 'service' }]
+        queries:
+          - name: 'Sample query'
+            query: 'histogram_quantile(0.95, sum(rate(traces_spanmetrics_latency_bucket[$__rate_interval])) by (le))'
+      serviceMap:
+        datasourceUid: 'mimir'
+      nodeGraph:
+        enabled: true
+      search:
+        hide: false
+      lokiSearch:
+        datasourceUid: 'loki'
+    uid: tempo

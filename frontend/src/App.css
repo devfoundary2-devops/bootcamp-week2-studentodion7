@@ -116,6 +116,34 @@
   color: #dc3545;
 }
 
+.product-card .cat.error-boundary {
+  padding: 20px;
+  text-align: center;
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  margin: 20px;
+}
+
+.error-boundary h2 {
+  color: #dc3545;
+  margin-bottom: 10px;
+}
+
+.error-boundary button {
+  background-color: #007bff;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-top: 10px;
+}
+
+.error-boundary button:hover {
+  background-color: #0056b3;
+}
+
 /* Buttons */
 .btn {
   display: inline-block;
